@@ -13,12 +13,17 @@ function preload() {
     you_rstep = loadImage("assets/character/you_rstep.png");
     you_sit = loadImage("assets/character/you_sit.png")
 
+    shaman_stand = loadImage("assets/character/shaman_stand.png");
+    shaman_lstep = loadImage("assets/character/shaman_lstep.png");
+    shaman_rstep = loadImage("assets/character/shaman_rstep.png");
+    shaman_sit = loadImage("assets/character/shaman_sit.png")
+
     // UI
     space_pressed = loadImage("assets/ui/space_pressed.png");
     space_unpressed = loadImage("assets/ui/space_unpressed.png");
 
     fire_frames = [];
-    for(let i = 1; i <= 32; i++) {
+    for(let i = -4; i <= 31; i++) {
         fire_frames.push(loadImage("assets/fire_frames/CroppedFireSeeringAnimation" + i + ".png"));
     }
 }
@@ -45,21 +50,22 @@ function windowResized() {
 // -------- Game Definitions -------- //
 class Animated {
     frame = 0;
+    completed = false; // Has the animation played through all the way once?
 
-    constructor(imgs, w, h, frameStep) {
+    constructor(imgs, w, h, frame_step, on_complete = ()=>{}) {
         this.imgs = imgs; // The imgs to animate through
-        this.frameStep = frameStep; // How many frames each img should be displayed
+        this.frame_step = frame_step; // How many frames each img should be displayed
         this.w = w;
         this.h = h;
+        this.on_complete = on_complete
     }
 
     show(x, y) {
-        if(this.frame > this.frameStep * this.imgs.length) this.frame = 0;
 
         let current_img = this.imgs[0];
 
         for(let i = 1; i <= this.imgs.length; i++) {
-            if(this.frame < this.frameStep * i) {
+            if(this.frame < this.frame_step * i) {
                 current_img = this.imgs[i-1];
                 break;
             }
@@ -67,6 +73,12 @@ class Animated {
         this.frame++;
 
         image(current_img, x, y, this.w, this.h);
+        
+        if(this.frame >= this.frame_step * this.imgs.length) {
+            this.frame = 0;
+            this.completed = true;
+            this.on_complete();
+        }
     }
 }
 
@@ -154,12 +166,12 @@ class Player {
         } else {
             noStroke();
         }
-        let current_frame = this.sitting ? you_sit : you_stand;
+        let current_frame = !in_vision ? (this.sitting ? you_sit : you_stand) : (this.sitting ? shaman_sit : shaman_stand);
         if(this.right != this.left) {
             if(this.sitting) {this.sitting = false; this.frame = 0}
-            if(this.frame < this.frame_step) current_frame = you_lstep;
-            else if(this.frame < this.frame_step*2) current_frame = you_rstep;
-            else if(this.frame < this.frame_step*3) current_frame = you_stand;
+            if(this.frame < this.frame_step) current_frame = in_vision ? shaman_lstep : you_lstep;
+            else if(this.frame < this.frame_step*2) current_frame = in_vision ? shaman_rstep : you_rstep;
+            else if(this.frame < this.frame_step*3) current_frame = in_vision ? shaman_stand : you_stand;
             else this.frame= -1;
             this.frame++;
         }
@@ -179,6 +191,7 @@ class Player {
 var debug = false; // If true, render hitboxes & run fast
 var you; // Player variable
 var screen = 0; // Which screen the player's on
+var fire_watching = false; // Is the player currently watching the fire?
 var in_vision = false; // Is the player currently in a vision
 var interact = () => {}; // Function the player can currently trigger by interacting 
 
@@ -190,22 +203,26 @@ function start() {
         ["He will see you", 1],
         ["Come in.", 1]]);
     space_indicator = new Animated([space_unpressed, space_pressed], 20, 10, 20);
-    fire_seering = new Animated(fire_frames, CANVAS_WIDTH, CANVAS_WIDTH*1.54, 5);
+    fire_seering = new Animated(fire_frames, CANVAS_WIDTH, CANVAS_WIDTH+242, 5, () => {
+        fire_watching = false; vision(); in_vision = true});
 }
 
 // Render / game logic loop
 function draw() {
     background(255,255,255); // Fill the window with white
-    you.update(); // Handle player movement
-    
-    if(!in_vision) world(); 
-    else vision(); 
+    you.update(); // Handle player movement 
+    if(fire_watching) {
+        fire_seering.show(TOP_X,TOP_Y-138); // play fire seering animation
+    }
+    else if(in_vision) vision();
+    else world();
 
-    you.show();
+   if(!fire_watching) you.show();
 }
 
 // Render / logic for the gray world 
 function world() {
+
     push(); 
     translate(TOP_X, TOP_Y)
     if(debug) {
@@ -235,13 +252,15 @@ function world() {
             if(you.x < 260 && !first_talk.completed) {
                 you.x++;
                 you.left = false;
-            } else if (you.x < 200) { // And should sit down at a certain X
+            } else if (you.x < 200) { // And should sit down once hes inside 
                 you.x++;
                 you.left = false;
                 you.sitting = true;
             } else if (you.sitting) { // After 10 frames of sitting, look at the fire
-                if(you.sit_timer > you.frame_step*10) {
-                    fire_seering.show(0,-121); // play fire seering animation
+                if(you.sit_timer > you.frame_step*13 && !fire_seering.completed) {
+                    fire_watching = true;
+                    you.sitting = false;
+                    you.x -= 10
                 }
             }
             // If the player's close enough to the tent, interacting starts dialog
@@ -279,7 +298,18 @@ function world() {
 
 // Render / logic for the void visions
 function vision() {
-    //TODO
+    push(); 
+    translate(TOP_X, TOP_Y)
+    if(debug) {
+        strokeWeight(1);
+        stroke(255,0,0);
+    } else {
+        noStroke();
+    }
+    fill(255,255,255);
+    rectMode(CORNER);
+    rect(0,0,CANVAS_WIDTH, CANVAS_WIDTH);
+    pop();
 }
 
 function keyPressed() {
