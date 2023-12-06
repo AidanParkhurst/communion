@@ -18,14 +18,32 @@ function preload() {
     shaman_rstep = loadImage("assets/character/shaman_rstep.png");
     shaman_sit = loadImage("assets/character/shaman_sit.png")
 
+    burning_frames = []; // Burning Particles
+    for(let i = 1; i <= 7; i++) {
+        burning_frames.push(loadImage("assets/burning_frames/Burning" + i + ".png"));
+    }
     // UI
     space_pressed = loadImage("assets/ui/space_pressed.png");
     space_unpressed = loadImage("assets/ui/space_unpressed.png");
 
+    // The Shaman's Campfire 
     fire_frames = [];
     for(let i = -4; i <= 31; i++) {
         fire_frames.push(loadImage("assets/fire_frames/CroppedFireSeeringAnimation" + i + ".png"));
     }
+    
+    // The Flower Growing
+    flower_frames = [];
+    for(let i = 1; i <= 5; i++) {
+        flower_frames.push(loadImage("assets/flower_frames/Flower" + i + ".png"));
+    }
+
+    // The Shaman Touching the Flower
+    touch_frames = [];
+    for(let i = 1; i <= 22; i++) {
+        touch_frames.push(loadImage("assets/touch_frames/Touch" + i + ".png"));
+    }
+
 }
 
 // -------- Canvas Setup -------- //
@@ -139,6 +157,11 @@ class Player {
     sitting = false;
     sit_timer = 0;
 
+    sit_frame = you_sit;
+    rstep_frame = you_rstep;
+    lstep_frame = you_lstep;
+    stand_frame = you_stand;
+
     constructor(x, y, w, h) {
         this.x = x;
         this.y = y;
@@ -153,6 +176,11 @@ class Player {
             this.x-= this.speed;
         if (this.right)
             this.x+= this.speed;
+
+        this.sit_frame = !in_vision ? you_sit : shaman_sit;
+        this.rstep_frame = !in_vision ? you_rstep : shaman_rstep;
+        this.lstep_frame = !in_vision ? you_lstep : shaman_lstep;
+        this.stand_frame = !in_vision ? you_stand : shaman_stand;
     }
     
     show() {
@@ -166,17 +194,20 @@ class Player {
         } else {
             noStroke();
         }
-        let current_frame = !in_vision ? (this.sitting ? you_sit : you_stand) : (this.sitting ? shaman_sit : shaman_stand);
-        if(this.right != this.left) {
+
+        let current_frame = this.stand_frame;
+        if(this.sitting) {
+            current_frame = this.sit_frame;
+            this.sit_timer++;
+        }
+        else if(this.right != this.left) {
             if(this.sitting) {this.sitting = false; this.frame = 0}
-            if(this.frame < this.frame_step) current_frame = in_vision ? shaman_lstep : you_lstep;
-            else if(this.frame < this.frame_step*2) current_frame = in_vision ? shaman_rstep : you_rstep;
-            else if(this.frame < this.frame_step*3) current_frame = in_vision ? shaman_stand : you_stand;
+            if(this.frame < this.frame_step) current_frame = this.lstep_frame;
+            else if(this.frame < this.frame_step*2) current_frame = this.rstep_frame;
+            else if(this.frame < this.frame_step*3) current_frame = this.stand_frame;
             else this.frame= -1;
             this.frame++;
         }
-        else if(this.sitting)
-            this.sit_timer++;
 
         translate(this.x,this.y);
         if(this.left) scale(-1,1);
@@ -192,7 +223,9 @@ var debug = false; // If true, render hitboxes & run fast
 var you; // Player variable
 var screen = 0; // Which screen the player's on
 var fire_watching = false; // Is the player currently watching the fire?
+var touching = false; // Is the player currently touching the flower?
 var in_vision = false; // Is the player currently in a vision
+var current_dialog;
 var interact = () => {}; // Function the player can currently trigger by interacting 
 
 // Init game objects
@@ -202,9 +235,37 @@ function start() {
             ["I want to see God", 0],
         ["He will see you", 1],
         ["Come in.", 1]]);
+    second_talk = new Dialog([
+            ["I saw you in the flame", 0],
+            ["Why?", 0],
+        ["You saw yourself", 1],
+        ["Look again.", 1]]);
+    third_talk = new Dialog([
+            ["I saw Annie in the flame", 0],
+            ["Did you know her?", 0],
+        ["No.", 1],
+        ["I did't known anyone", 1],
+        ["Until I met God", 1]]);
+    final_talk = new Dialog([
+            ["I saw what you did", 0],
+            ["You're a monster", 0],
+        ["You're right", 1],
+        ["I was", 1],
+        ["I hope you see why", 1]]);
+    current_dialog = first_talk;
+
     space_indicator = new Animated([space_unpressed, space_pressed], 20, 10, 20);
-    fire_seering = new Animated(fire_frames, CANVAS_WIDTH, CANVAS_WIDTH+242, 5, () => {
-        fire_watching = false; vision(); in_vision = true});
+    fire_seering = new Animated(fire_frames, CANVAS_WIDTH, CANVAS_WIDTH+242, 5, () =>
+        /*|on_complete -> */ { fire_watching = false; you.sitting = false; in_vision = true });
+    flower_growing = new Animated(flower_frames, 20, 24, 15, () => {});
+    
+    shaman_burning = new Animated(burning_frames, 20, 40, 3, () => {});
+    shaman_touching = new Animated(touch_frames, 57, 167, 3, () =>
+        /*|on_complete -> */ {
+            touching = false; in_vision = false;
+            screen = 0; you.x = 20; 
+            current_dialog = second_talk;
+            fire_seering.completed = false; you.sit_timer = 0});
 }
 
 // Render / game logic loop
@@ -214,10 +275,15 @@ function draw() {
     if(fire_watching) {
         fire_seering.show(TOP_X,TOP_Y-138); // play fire seering animation
     }
-    else if(in_vision) vision();
-    else world();
-
-   if(!fire_watching) you.show();
+    else if(in_vision) { 
+        vision();
+        shaman_burning.show(TOP_X + you.x, TOP_Y + you.y + 1);
+        if(!touching) you.show();
+    }
+    else {
+        world();
+        you.show();
+    }
 }
 
 // Render / logic for the gray world 
@@ -249,7 +315,7 @@ function world() {
         case -2: // tent 
             image(tent_img, -20, 64, CANVAS_WIDTH, CANVAS_WIDTH);
             // Player can only enter tent after talking to the shaman
-            if(you.x < 260 && !first_talk.completed) {
+            if(you.x < 260 && !current_dialog.completed) {
                 you.x++;
                 you.left = false;
             } else if (you.x < 200) { // And should sit down once hes inside 
@@ -257,27 +323,30 @@ function world() {
                 you.left = false;
                 you.sitting = true;
             } else if (you.sitting) { // After 10 frames of sitting, look at the fire
-                if(you.sit_timer > you.frame_step*13 && !fire_seering.completed) {
+                if(you.sit_timer > you.frame_step*15 + 3 && !fire_seering.completed) {
                     fire_watching = true;
-                    you.sitting = false;
                     you.x -= 10
                 }
+                /*push(); // Fade in first frame
+                tint(255, 255* (you.sit_timer / (you.frame_step*15 + 3) ));
+                image(fire_seering.imgs[0], 0, -138, CANVAS_WIDTH, CANVAS_WIDTH+242);
+                pop();*/
             }
             // If the player's close enough to the tent, interacting starts dialog
             if(you.x <= 300) {
-                if(!first_talk.active) {
+                if(!current_dialog.active) {
                     space_indicator.show(240, you.y - 10);
                     interact = () => {
-                        first_talk.active = true;
+                        current_dialog.active = true;
                     }
                 }
-                if(first_talk.active) {
-                    first_talk.show();
+                if(current_dialog.active) {
+                    current_dialog.show();
                 }
             }
             // If the player walks away, dialog stops and they can't interact
             else {
-                first_talk.active = false
+                current_dialog.active = false
                 interact = () => {};
             }
             break;
@@ -309,6 +378,21 @@ function vision() {
     fill(255,255,255);
     rectMode(CORNER);
     rect(0,0,CANVAS_WIDTH, CANVAS_WIDTH);
+    if(!flower_growing.completed ) // Show the flower growing
+        flower_growing.show(CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h);
+    else // Or show the fully grown flower
+        image(flower_growing.imgs[flower_growing.imgs.length-1],
+             CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h,
+             flower_growing.w, flower_growing.h);
+    if (you.x > (CANVAS_WIDTH * 2) - 25) {
+        you.x--;
+        you.right = false;
+    }
+    if (you.x > (CANVAS_WIDTH * 2) - 35) {
+        interact = () => {touching = true;};
+    }
+    if(touching)
+        shaman_touching.show(you.x - 6, you.y - 124);
     pop();
 }
 
