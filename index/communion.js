@@ -5,9 +5,12 @@ function preload() {
     // Screens
     tomb_img = loadImage("assets/screens/tomb.png");
     tent_img = loadImage("assets/screens/tent.png");
-    stones_img = loadImage("assets/screens/stones.png");
+    empty_camp = loadImage("assets/screens/empty_camp.png");
+    flower_camp = loadImage("assets/screens/flower_camp.png");
+    stone_camp = loadImage("assets/screens/stone_camp.png");
+    stake = loadImage("assets/screens/stake.png");
 
-    // Character
+    // Characters
     you_stand = loadImage("assets/character/you_stand.png");
     you_lstep = loadImage("assets/character/you_lstep.png");
     you_rstep = loadImage("assets/character/you_rstep.png");
@@ -18,6 +21,10 @@ function preload() {
     shaman_rstep = loadImage("assets/character/shaman_rstep.png");
     shaman_sit = loadImage("assets/character/shaman_sit.png")
 
+    annie_stand = loadImage("assets/character/annie_stand.png");
+    annie_lstep = loadImage("assets/character/annie_lstep.png");
+    annie_rstep = loadImage("assets/character/annie_rstep.png");
+    
     burning_frames = []; // Burning Particles
     for(let i = 1; i <= 7; i++) {
         burning_frames.push(loadImage("assets/burning_frames/Burning" + i + ".png"));
@@ -31,7 +38,7 @@ function preload() {
     for(let i = -4; i <= 31; i++) {
         fire_frames.push(loadImage("assets/fire_frames/CroppedFireSeeringAnimation" + i + ".png"));
     }
-    
+
     // The Flower Growing
     flower_frames = [];
     for(let i = 1; i <= 5; i++) {
@@ -44,6 +51,29 @@ function preload() {
         touch_frames.push(loadImage("assets/touch_frames/Touch" + i + ".png"));
     }
 
+    // The Shaman Combusting
+    combust_frames = [];
+    for(let i = 1; i <= 11; i++) {
+        combust_frames.push(loadImage("assets/combustion_frames/Combustion" + i + ".png"));
+    }
+
+    // The Witch Falling
+    fall_frames = [];
+    for(let i = 1; i <= 4; i++) {
+        fall_frames.push(loadImage("assets/fall_frames/AnnieFall" + i + ".png"));
+    }
+    
+    // The Witch Dying
+    skewer_frames = [];
+    for(let i = 1; i <= 3; i++) {
+        skewer_frames.push(loadImage("assets/skewer_frames/Skewer" + i + ".png"));
+    }
+
+    // The Witch Burning
+    witch_frames = [];
+    for(let i = 1; i <= 30; i++) {
+        witch_frames.push(loadImage("assets/witch_frames/StakeBurn" + i + ".png"));
+    }
 }
 
 // -------- Canvas Setup -------- //
@@ -69,7 +99,7 @@ function windowResized() {
 class Animated {
     frame = 0;
     completed = false; // Has the animation played through all the way once?
-
+    mirrored = false; // Should this animation play mirrored?
     constructor(imgs, w, h, frame_step, on_complete = ()=>{}) {
         this.imgs = imgs; // The imgs to animate through
         this.frame_step = frame_step; // How many frames each img should be displayed
@@ -90,7 +120,13 @@ class Animated {
         }
         this.frame++;
 
-        image(current_img, x, y, this.w, this.h);
+        push();
+        translate(x,y);
+        if(this.mirrored) scale(-1,1);
+        else scale(1,1);
+        
+        image(current_img, this.mirrored ? -this.w : 0, 0, this.w, this.h);
+        pop();
         
         if(this.frame >= this.frame_step * this.imgs.length) {
             this.frame = 0;
@@ -116,7 +152,7 @@ class Dialog {
     show() {
         push();
         let top_y = (this.current_msg * this.display_length + Math.min(this.frame, this.display_length));
-        translate(230, 350-top_y);
+        translate(230, 345-top_y);
         let index = 0;
         for(let [msg,id] of this.messages) {
             if(index > this.current_msg) continue;
@@ -200,7 +236,7 @@ class Player {
             current_frame = this.sit_frame;
             this.sit_timer++;
         }
-        else if(this.right != this.left) {
+        if(this.right != this.left) {
             if(this.sitting) {this.sitting = false; this.frame = 0}
             if(this.frame < this.frame_step) current_frame = this.lstep_frame;
             else if(this.frame < this.frame_step*2) current_frame = this.rstep_frame;
@@ -224,8 +260,14 @@ var you; // Player variable
 var screen = 0; // Which screen the player's on
 var fire_watching = false; // Is the player currently watching the fire?
 var touching = false; // Is the player currently touching the flower?
+var combusting = false; // Is the player currently spontaneously combusting?
+var stake_screen = false; // Can the player currently see the stake?
+var burning = false; // Is the player currently burning a witch?
 var in_vision = false; // Is the player currently in a vision
-var current_dialog;
+var vision_timer = 0; // How long has the player been in the current vision?
+var current_dialog; // What point is the player at in the story?
+var annie_x = -(CANVAS_WIDTH + 200) // Annie's x position 
+var annie_y = -200 // Annie's y position
 var interact = () => {}; // Function the player can currently trigger by interacting 
 
 // Init game objects
@@ -236,36 +278,59 @@ function start() {
         ["He will see you", 1],
         ["Come in.", 1]]);
     second_talk = new Dialog([
+        ["Once wasn't enough?", 1],
             ["I saw you in the flame", 0],
-            ["Why?", 0],
-        ["You saw yourself", 1],
+            ["I wanted to see God", 0],
+        ["Only you were in the flame.", 1],
         ["Look again.", 1]]);
     third_talk = new Dialog([
             ["I saw Annie in the flame", 0],
             ["Did you know her?", 0],
         ["No.", 1],
-        ["I did't known anyone", 1],
+        ["I didn't know anyone", 1],
         ["Until I met God", 1]]);
     final_talk = new Dialog([
             ["I saw what you did", 0],
             ["You're a monster", 0],
         ["You're right", 1],
         ["I was", 1],
-        ["I hope you see why", 1]]);
+        ["I hope you saw why", 1]]);
     current_dialog = first_talk;
 
-    space_indicator = new Animated([space_unpressed, space_pressed], 20, 10, 20);
+    space_indicator = new Animated([space_unpressed, space_pressed], 20, 10, 15);
     fire_seering = new Animated(fire_frames, CANVAS_WIDTH, CANVAS_WIDTH+242, 5, () =>
-        /*|on_complete -> */ { fire_watching = false; you.sitting = false; in_vision = true });
-    flower_growing = new Animated(flower_frames, 20, 24, 15, () => {});
+        /*|on_complete -> */ {
+            fire_watching = false;
+            you.sitting = false;
+            in_vision = true });
     
+    flower_growing = new Animated(flower_frames, 20, 24, 15, () => {});
     shaman_burning = new Animated(burning_frames, 20, 40, 3, () => {});
     shaman_touching = new Animated(touch_frames, 57, 167, 3, () =>
         /*|on_complete -> */ {
-            touching = false; in_vision = false;
+            interact = () => {}; touching = false;
+            in_vision = false; vision_timer = 0;
             screen = 0; you.x = 20; 
             current_dialog = second_talk;
             fire_seering.completed = false; you.sit_timer = 0});
+
+    annie_walking = new Animated([annie_lstep, annie_rstep, annie_stand], 15, 36, 5, () => {});
+    spontaneous_combustion = new Animated(combust_frames, 20, 95, 3, () =>
+        /*|on_complete -> */ {
+            interact = () => {}; combusting = false;
+            in_vision = false; vision_timer = 0;
+            screen = 0; you.x = 20; 
+            current_dialog = third_talk;
+            fire_seering.completed = false; you.sit_timer = 0});
+
+    annie_falling = new Animated(fall_frames, 42, 32, 3, () => {});
+    annie_skewer = new Animated(skewer_frames, 40, 52, 3, () => {});
+    witch_burning = new Animated(witch_frames, 128, 365, 4, () => //128,365
+        /*|on_complete -> */ {
+            interact = () => {}; burning = false;
+            in_vision = false; vision_timer = 0;
+            screen = 0; you.x = 20; you.sitting = false;
+            current_dialog = final_talk;});
 }
 
 // Render / game logic loop
@@ -278,7 +343,7 @@ function draw() {
     else if(in_vision) { 
         vision();
         shaman_burning.show(TOP_X + you.x, TOP_Y + you.y + 1);
-        if(!touching) you.show();
+        if(!touching && !combusting && !(witch_burning.frame > 1)) you.show();
     }
     else {
         world();
@@ -288,7 +353,6 @@ function draw() {
 
 // Render / logic for the gray world 
 function world() {
-
     push(); 
     translate(TOP_X, TOP_Y)
     if(debug) {
@@ -300,17 +364,29 @@ function world() {
     fill(51,52,54);
     rectMode(CORNER);
     rect(0,0,CANVAS_WIDTH, CANVAS_WIDTH);
+    if(current_dialog == third_talk && (annie_x > -CANVAS_WIDTH * 2)) {
+        annie_walking.mirrored = true;
+        annie_walking.show(annie_x, CANVAS_WIDTH - (annie_walking.h-2));
+        annie_x -= 1;
+    }
     switch(screen) {
         case 0: // tomb 
             image(tomb_img, 0, 20, CANVAS_WIDTH, CANVAS_WIDTH);
             // Don't let player walk off right side;
-            if (you.x > 350) {
+            if (you.x > 270) {
                 you.x--;
                 you.right = false;
             }
             break;
         case -1: // stones
-            image(stones_img, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+            if(current_dialog == first_talk)
+                image(empty_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+            else if(current_dialog == second_talk)
+                image(flower_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+            else if(current_dialog == third_talk)
+                image(stone_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+            else 
+                image(stone_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
             break;
         case -2: // tent 
             image(tent_img, -20, 64, CANVAS_WIDTH, CANVAS_WIDTH);
@@ -378,21 +454,79 @@ function vision() {
     fill(255,255,255);
     rectMode(CORNER);
     rect(0,0,CANVAS_WIDTH, CANVAS_WIDTH);
-    if(!flower_growing.completed ) // Show the flower growing
-        flower_growing.show(CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h);
-    else // Or show the fully grown flower
-        image(flower_growing.imgs[flower_growing.imgs.length-1],
-             CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h,
-             flower_growing.w, flower_growing.h);
+    
+    if(stake_screen) {
+        //image(stone_camp,0,0,CANVAS_WIDTH, CANVAS_WIDTH+64);
+        if(witch_burning.frame < 104)
+            image(stake, 145, 252, 108, 197);
+        if(you.x < 225) {
+            you.x++;
+            you.left = false;
+            you.sitting = true;
+            interact = () => {burning = true};
+        }
+    }
+    else if(vision_timer > 30) {
+        // Vision where annie leaves
+        if(shaman_touching.completed && !spontaneous_combustion.completed) {
+            if(annie_x < -CANVAS_WIDTH) {
+                annie_walking.show(annie_x, CANVAS_WIDTH - (annie_walking.h-2));
+                annie_x += 1;
+            }
+            else
+                image(annie_stand, -CANVAS_WIDTH, CANVAS_WIDTH - (annie_walking.h-2), annie_walking.w, annie_walking.h);
+            if (you.x < -CANVAS_WIDTH + 45) {
+                interact = () => {combusting = true;};
+            }
+        }
+        // Vision where the flower burns
+        if(!flower_growing.completed ) // Show the flower growing
+            flower_growing.show(CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h);
+        else if(!shaman_touching.completed) { // Or show the fully grown flower
+            image(flower_growing.imgs[flower_growing.imgs.length-1],
+                 CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h,
+                 flower_growing.w, flower_growing.h);
+            if (you.x > (CANVAS_WIDTH * 2) - 35) {
+                interact = () => {touching = true;};
+            }
+        }
+    }
+    vision_timer++;
+
+    // Left and right bounds for player movement (Left bound unlocks after second vision)
+    if (!spontaneous_combustion.completed && (you.x < -CANVAS_WIDTH + 30)) {
+        you.x++;
+        you.left = false;
+    }
     if (you.x > (CANVAS_WIDTH * 2) - 25) {
-        you.x--;
+        if(!stake_screen) you.x--;
         you.right = false;
     }
-    if (you.x > (CANVAS_WIDTH * 2) - 35) {
-        interact = () => {touching = true;};
+    // If the player walks off the left side
+    if(you.x + TOP_X + you.w/2 < 0) {
+       you.x = windowWidth - TOP_X - you.w/2;
+       stake_screen = true;
     }
+
     if(touching)
         shaman_touching.show(you.x - 6, you.y - 124);
+    if(combusting)
+        spontaneous_combustion.show(you.x, you.y-52);
+    if(burning) {
+        if(!annie_falling.completed) {
+            annie_falling.show(170, annie_y);
+            annie_y += 36;
+        }
+        else if(!annie_skewer.completed) {
+            annie_skewer.show(170,237);
+        }
+        else {
+            if(witch_burning.frame < 104)
+                image(annie_skewer.imgs[skewer_frames.length - 1], 170, 237, annie_skewer.w, annie_skewer.h);
+            witch_burning.show(you.x-95, you.y-273); 
+        }
+    }
+
     pop();
 }
 
