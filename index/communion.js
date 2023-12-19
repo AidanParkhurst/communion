@@ -7,7 +7,7 @@ function preload() {
     tent_img = loadImage("assets/screens/tent.png");
     empty_camp = loadImage("assets/screens/empty_camp.png");
     flower_camp = loadImage("assets/screens/flower_camp.png");
-    stone_camp = loadImage("assets/screens/stone_camp.png");
+    stone_circle = loadImage("assets/screens/stone_circle.png");
     stake = loadImage("assets/screens/stake.png");
 
     // Characters
@@ -20,6 +20,8 @@ function preload() {
     shaman_lstep = loadImage("assets/character/shaman_lstep.png");
     shaman_rstep = loadImage("assets/character/shaman_rstep.png");
     shaman_sit = loadImage("assets/character/shaman_sit.png")
+
+    old_shaman_stand = loadImage("assets/character/old_shaman_stand.png");
 
     annie_stand = loadImage("assets/character/annie_stand.png");
     annie_lstep = loadImage("assets/character/annie_lstep.png");
@@ -73,6 +75,18 @@ function preload() {
     witch_frames = [];
     for(let i = 1; i <= 30; i++) {
         witch_frames.push(loadImage("assets/witch_frames/StakeBurn" + i + ".png"));
+    }
+
+    // The Old Shaman Dying
+    shove_frames = [];
+    for(let i = 1; i <= 10; i++) {
+        shove_frames.push(loadImage("assets/shove_frames/Shove" + i + ".png"));
+    }
+    
+    // The Sacrifice 
+    sacrifice_frames = [];
+    for(let i = 1; i <= 43; i++) {
+        sacrifice_frames.push(loadImage("assets/sacrifice_frames/Sacrifice" + i + ".png"));
     }
 }
 
@@ -149,10 +163,10 @@ class Dialog {
         this.messages = messages;
     }
 
-    show() {
+    show(x, y) {
         push();
         let top_y = (this.current_msg * this.display_length + Math.min(this.frame, this.display_length));
-        translate(230, 345-top_y);
+        translate(x, y-top_y);
         let index = 0;
         for(let [msg,id] of this.messages) {
             if(index > this.current_msg) continue;
@@ -256,19 +270,24 @@ class Player {
 
 // -------- Game -------- //
 var debug = false; // If true, render hitboxes & run fast
-var you; // Player variable
+
+// Player variables 
+var you; // Player 
 var screen = 0; // Which screen the player's on
-var fire_watching = false; // Is the player currently watching the fire?
-var touching = false; // Is the player currently touching the flower?
-var combusting = false; // Is the player currently spontaneously combusting?
-var stake_screen = false; // Can the player currently see the stake?
-var burning = false; // Is the player currently burning a witch?
 var in_vision = false; // Is the player currently in a vision
 var vision_timer = 0; // How long has the player been in the current vision?
 var current_dialog; // What point is the player at in the story?
-var annie_x = -(CANVAS_WIDTH + 200) // Annie's x position 
-var annie_y = -200 // Annie's y position
 var interact = () => {}; // Function the player can currently trigger by interacting 
+
+// Animations in order
+var fire_watching = false; // Is the player currently watching the fire?
+var touching = false; // Is the player currently touching the flower?
+var annie_x = -(CANVAS_WIDTH + 200) // Annie's x position 
+var combusting = false; // Is the player currently spontaneously combusting?
+var stake_screen = false; // Can the player currently see the stake?
+var annie_y = -200 // Annie's y position
+var burning = false; // Is the player currently burning a witch?
+var sacrificing = false; // Is the player currently sacrificing someone?
 
 // Init game objects
 function start() {
@@ -281,20 +300,20 @@ function start() {
         ["Once wasn't enough?", 1],
             ["I saw you in the flame", 0],
             ["I wanted to see God", 0],
-        ["Only you were in the flame.", 1],
+        ["You saw yourself.", 1],
         ["Look again.", 1]]);
     third_talk = new Dialog([
             ["I saw Annie in the flame", 0],
             ["Did you know her?", 0],
         ["No.", 1],
-        ["I didn't know anyone", 1],
-        ["Until I met God", 1]]);
+        ["I hardly knew myself", 1],
+        ["Until I met Him", 1]]);
     final_talk = new Dialog([
             ["I saw what you did", 0],
             ["You're a monster", 0],
-        ["You're right", 1],
-        ["I was", 1],
-        ["I hope you saw why", 1]]);
+        ["I saw her sins", 1],
+        ["He saw my potential", 1],
+        ["He sees yours too", 1]]);
     current_dialog = first_talk;
 
     space_indicator = new Animated([space_unpressed, space_pressed], 20, 10, 15);
@@ -325,12 +344,15 @@ function start() {
 
     annie_falling = new Animated(fall_frames, 42, 32, 3, () => {});
     annie_skewer = new Animated(skewer_frames, 40, 52, 3, () => {});
-    witch_burning = new Animated(witch_frames, 128, 365, 4, () => //128,365
+    witch_burning = new Animated(witch_frames, 128, 365, 4, () =>
         /*|on_complete -> */ {
             interact = () => {}; burning = false;
             in_vision = false; vision_timer = 0;
             screen = 0; you.x = 20; you.sitting = false;
             current_dialog = final_talk;});
+
+    you_shoving = new Animated(shove_frames, 103, 85, 3, () => {});
+    sacrifice = new Animated(sacrifice_frames, CANVAS_WIDTH, CANVAS_WIDTH+64, 4, () => {});
 }
 
 // Render / game logic loop
@@ -347,7 +369,7 @@ function draw() {
     }
     else {
         world();
-        you.show();
+        if(!sacrificing) you.show();
     }
 }
 
@@ -383,10 +405,49 @@ function world() {
                 image(empty_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
             else if(current_dialog == second_talk)
                 image(flower_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
-            else if(current_dialog == third_talk)
-                image(stone_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
-            else 
-                image(stone_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+            else if(current_dialog == third_talk) {
+                image(flower_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+                image(stone_circle, CANVAS_WIDTH/2 - 50, CANVAS_WIDTH+1, 108, 48);
+            }
+            else /*if(current_dialog == final_talk) */ {
+                image(flower_camp, 0, 0, CANVAS_WIDTH, CANVAS_WIDTH+64);
+                image(stone_circle, CANVAS_WIDTH/2 - 50, CANVAS_WIDTH+1, 108, 48);
+                if(sacrificing) {
+                    if(!you_shoving.completed)
+                        you_shoving.show(you.x-80, you.y-8);
+                    else {
+                        if(sacrifice.frame < 112)
+                            image(you_shoving.imgs[shove_frames.length-1], you.x-80, you.y-8, you_shoving.w, you_shoving.h);
+                        sacrifice.show(0,0);
+                    }
+                }
+                else
+                    image(old_shaman_stand, 236, CANVAS_WIDTH - 46, 18, 48);
+                
+                if(you.x <= 300) {
+                    interact = () => {
+                        current_dialog.active = true;
+                    }
+                    if(you.x < 280 && !current_dialog.completed) {
+                        you.x++; you.left = false;
+                    }
+                    else if(you.x < 265) {
+                        interact = () => {
+                            sacrificing = true;
+                            current_dialog.active = false;
+                        }
+                    }
+                    if(you.x < 260) {
+                        you.x++; you.left = false;
+                    }
+                }
+                else if(you.x >= 310){ 
+                    current_dialog.active = false;
+                    interact = () => {};
+                }
+                if(current_dialog.active)
+                    current_dialog.show(250,335);
+            }
             break;
         case -2: // tent 
             image(tent_img, -20, 64, CANVAS_WIDTH, CANVAS_WIDTH);
@@ -416,17 +477,19 @@ function world() {
                         current_dialog.active = true;
                     }
                 }
-                if(current_dialog.active) {
-                    current_dialog.show();
-                }
             }
             // If the player walks away, dialog stops and they can't interact
             else {
                 current_dialog.active = false
                 interact = () => {};
             }
+            
+            if(current_dialog.active)
+                current_dialog.show(230,345);
             break;
     }
+
+
     pop();
 
     if(you.x + you.w/2 < 0) {
@@ -534,14 +597,17 @@ function keyPressed() {
     switch(keyCode) {
         case LEFT_ARROW:
         case 65: // A key
-            you.left = true;
+            if(!fire_watching && !touching && !combusting && !burning && !sacrificing)
+                you.left = true;
             break;
         case RIGHT_ARROW:
         case 68: // D key
-            you.right = true;
+            if(!fire_watching && !touching && !combusting && !burning && !sacrificing)
+                you.right = true;
             break;
         case 32: // Space
-            interact();
+            if(!fire_watching && !touching && !combusting && !burning && !sacrificing)
+                interact();
             break;
         default:
             return false;
