@@ -85,8 +85,14 @@ function preload() {
     
     // The Sacrifice 
     sacrifice_frames = [];
-    for(let i = 1; i <= 43; i++) {
+    for(let i = 1; i <= 42; i++) {
         sacrifice_frames.push(loadImage("assets/sacrifice_frames/Sacrifice" + i + ".png"));
+    }
+    
+    // Him appearing 
+    rising_frames = [];
+    for(let i = 0; i <= 4; i++) {
+        rising_frames.push(loadImage("assets/rising_frames/Rising" + i + ".png"));
     }
 }
 
@@ -227,10 +233,17 @@ class Player {
         if (this.right)
             this.x+= this.speed;
 
-        this.sit_frame = !in_vision ? you_sit : shaman_sit;
-        this.rstep_frame = !in_vision ? you_rstep : shaman_rstep;
-        this.lstep_frame = !in_vision ? you_lstep : shaman_lstep;
-        this.stand_frame = !in_vision ? you_stand : shaman_stand;
+        if(in_vision && !insane) {
+            this.sit_frame = shaman_sit;
+            this.rstep_frame = shaman_rstep;
+            this.lstep_frame = shaman_lstep;
+            this.stand_frame = shaman_stand;
+        } else {
+            this.sit_frame = you_sit;
+            this.rstep_frame = you_rstep;
+            this.lstep_frame = you_lstep;
+            this.stand_frame = you_stand;
+        }
     }
     
     show() {
@@ -288,6 +301,7 @@ var stake_screen = false; // Can the player currently see the stake?
 var annie_y = -200 // Annie's y position
 var burning = false; // Is the player currently burning a witch?
 var sacrificing = false; // Is the player currently sacrificing someone?
+var insane = false; // Can the player see god?
 
 // Init game objects
 function start() {
@@ -347,12 +361,17 @@ function start() {
     witch_burning = new Animated(witch_frames, 128, 365, 4, () =>
         /*|on_complete -> */ {
             interact = () => {}; burning = false;
-            in_vision = false; vision_timer = 0;
+            in_vision = false; vision_timer = 0; stake_screen = false;
             screen = 0; you.x = 20; you.sitting = false;
             current_dialog = final_talk;});
 
     you_shoving = new Animated(shove_frames, 103, 85, 3, () => {});
-    sacrifice = new Animated(sacrifice_frames, CANVAS_WIDTH, CANVAS_WIDTH+64, 4, () => {});
+    sacrifice = new Animated(sacrifice_frames, CANVAS_WIDTH, CANVAS_WIDTH+64, 4, () => {
+        interact = () => {}; sacrificing = false;
+        insane = true; in_vision = true;
+    });
+
+    him_rising = new Animated(rising_frames, 251, 502, 5, () => {});
 }
 
 // Render / game logic loop
@@ -364,7 +383,7 @@ function draw() {
     }
     else if(in_vision) { 
         vision();
-        shaman_burning.show(TOP_X + you.x, TOP_Y + you.y + 1);
+        if(!insane) shaman_burning.show(TOP_X + you.x, TOP_Y + you.y + 1);
         if(!touching && !combusting && !(witch_burning.frame > 1)) you.show();
     }
     else {
@@ -526,12 +545,18 @@ function vision() {
             you.x++;
             you.left = false;
             you.sitting = true;
-            interact = () => {burning = true};
+            if(!witch_burning.completed) interact = () => {burning = true};
         }
     }
-    else if(vision_timer > 30) {
+    if(vision_timer > 30) {
+        if(insane) {
+            if(!him_rising.completed)
+                him_rising.show(you.x-125, you.y - 185);
+            else
+                image(him_rising.imgs[rising_frames.length-1], you.x-125, you.y - 185, him_rising.w, him_rising.h);
+        }
         // Vision where annie leaves
-        if(shaman_touching.completed && !spontaneous_combustion.completed) {
+        else if(shaman_touching.completed && !spontaneous_combustion.completed) {
             if(annie_x < -CANVAS_WIDTH) {
                 annie_walking.show(annie_x, CANVAS_WIDTH - (annie_walking.h-2));
                 annie_x += 1;
@@ -543,7 +568,7 @@ function vision() {
             }
         }
         // Vision where the flower burns
-        if(!flower_growing.completed ) // Show the flower growing
+        else if(!flower_growing.completed ) // Show the flower growing
             flower_growing.show(CANVAS_WIDTH*2, CANVAS_WIDTH-flower_growing.h);
         else if(!shaman_touching.completed) { // Or show the fully grown flower
             image(flower_growing.imgs[flower_growing.imgs.length-1],
