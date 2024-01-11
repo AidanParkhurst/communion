@@ -16,6 +16,11 @@ function preload() {
     you_rstep = loadImage("assets/character/you_rstep.png");
     you_sit = loadImage("assets/character/you_sit.png")
 
+    bloody_stand = loadImage("assets/character/you_bloody.png");
+    bloody_lstep = loadImage("assets/character/you_bloody_lstep.png");
+    bloody_rstep = loadImage("assets/character/you_bloody_rstep.png");
+    bloody_sit = loadImage("assets/character/you_bloody_sit.png")
+    
     shaman_stand = loadImage("assets/character/shaman_stand.png");
     shaman_lstep = loadImage("assets/character/shaman_lstep.png");
     shaman_rstep = loadImage("assets/character/shaman_rstep.png");
@@ -90,10 +95,27 @@ function preload() {
     }
     
     // Him appearing 
-    rising_frames = [];
-    for(let i = 0; i <= 4; i++) {
-        rising_frames.push(loadImage("assets/rising_frames/Rising" + i + ".png"));
+    /*left_hand_frames = [];
+    for(let i = 1; i <= 5; i++) {
+        left_hand_frames.push(loadImage("assets/hand_frames/LeftHand" + i + ".png"));
     }
+    right_hand_frames = [];
+    for(let i = 1; i <= 5; i++) {
+        right_hand_frames.push(loadImage("assets/hand_frames/RightHand" + i + ".png"));
+    }*/
+    eye_frames = [];
+    for(let i = 1; i <= 2; i++) eye_frames.push(loadImage("assets/eye_frames/Open" + i + ".png"));
+    slam_frames = [];
+    for(let i = 1; i <= 21; i++) slam_frames.push(loadImage("assets/eye_frames/Slam" + i + ".png"));
+    crawl_frames = [];
+    for(let i = 1; i <= 6; i++) crawl_frames.push(loadImage("assets/crawl_frames/Crawl" + i + ".png"));
+
+    cut_frames = [];
+    for(let i = 1; i <= 23; i++) cut_frames.push(loadImage("assets/eye_frames/Cut" + i + ".png"));
+    cutopen_frames = [];
+    for(let i = 1; i <= 4; i++) cutopen_frames.push(loadImage("assets/eye_frames/CutOpen" + i + ".png"));
+    death_frames = [];
+    for(let i = 1; i <= 16; i++) death_frames.push(loadImage("assets/eye_frames/Death" + i + ".png"));
 }
 
 // -------- Canvas Setup -------- //
@@ -226,18 +248,32 @@ class Player {
     }
 
     update() {
-        if (this.y < (CANVAS_WIDTH - this.h))
-            this.y++;
+        var correct_height = (CANVAS_WIDTH - this.h)
+        if(insane) {
+            if(stake_screen)
+                correct_height = map(this.x, 1000, 225, CANVAS_WIDTH-(this.h*2), (CANVAS_WIDTH-this.h));
+            else
+                correct_height = CANVAS_WIDTH - (this.h*2)
+        }
+        this.y = correct_height;
         if (this.left)
             this.x-= this.speed;
         if (this.right)
             this.x+= this.speed;
 
-        if(in_vision && !insane) {
-            this.sit_frame = shaman_sit;
-            this.rstep_frame = shaman_rstep;
-            this.lstep_frame = shaman_lstep;
-            this.stand_frame = shaman_stand;
+        if(in_vision) {
+            if(!insane) {
+                this.sit_frame = shaman_sit;
+                this.rstep_frame = shaman_rstep;
+                this.lstep_frame = shaman_lstep;
+                this.stand_frame = shaman_stand;
+            }
+            else if(crawl.completed) {
+                this.sit_frame = bloody_sit;
+                this.rstep_frame = bloody_rstep;
+                this.lstep_frame = bloody_lstep;
+                this.stand_frame = bloody_stand;
+            }
         } else {
             this.sit_frame = you_sit;
             this.rstep_frame = you_rstep;
@@ -302,6 +338,7 @@ var annie_y = -200 // Annie's y position
 var burning = false; // Is the player currently burning a witch?
 var sacrificing = false; // Is the player currently sacrificing someone?
 var insane = false; // Can the player see god?
+var finale = false; // Is the game ending?
 
 // Init game objects
 function start() {
@@ -314,7 +351,7 @@ function start() {
         ["Once wasn't enough?", 1],
             ["I saw you in the flame", 0],
             ["I wanted to see God", 0],
-        ["You saw yourself.", 1],
+        ["He will show you.", 1],
         ["Look again.", 1]]);
     third_talk = new Dialog([
             ["I saw Annie in the flame", 0],
@@ -368,10 +405,22 @@ function start() {
     you_shoving = new Animated(shove_frames, 103, 85, 3, () => {});
     sacrifice = new Animated(sacrifice_frames, CANVAS_WIDTH, CANVAS_WIDTH+64, 4, () => {
         interact = () => {}; sacrificing = false;
-        insane = true; in_vision = true;
+        insane = true; in_vision = true; 
     });
 
-    him_rising = new Animated(rising_frames, 251, 502, 5, () => {});
+    /*right_hand = new Animated(right_hand_frames, 266, 305, 4, () => {});
+    left_hand = new Animated(left_hand_frames, 266, 305, 4, () => {});*/
+    his_eyes = new Animated(eye_frames, 150, 23, 4, () => {
+        you.x = 137;
+    });
+    slam = new Animated(slam_frames, 422, 473, 4, () => {you.x = 137;});
+    crawl = new Animated(crawl_frames, 422, 473, 8, () => {
+        interact = () => {}; sacrificing = false;
+        you.x = 137;});
+
+    cut = new Animated(cut_frames, 423, 367, 4, () => {});
+    cut_opening = new Animated(cutopen_frames, 423, 367, 4, () => {});
+    death = new Animated(death_frames, 423, 367, 4, () => {});
 }
 
 // Render / game logic loop
@@ -384,7 +433,10 @@ function draw() {
     else if(in_vision) { 
         vision();
         if(!insane) shaman_burning.show(TOP_X + you.x, TOP_Y + you.y + 1);
-        if(!touching && !combusting && !(witch_burning.frame > 1)) you.show();
+        if(!touching && !combusting && 
+            !(witch_burning.frame > 1) && 
+            (!insane || crawl.completed) &&
+            !finale) you.show();
     }
     else {
         world();
@@ -539,22 +591,39 @@ function vision() {
     
     if(stake_screen) {
         //image(stone_camp,0,0,CANVAS_WIDTH, CANVAS_WIDTH+64);
-        if(witch_burning.frame < 104)
+        if(witch_burning.frame < 104 && !finale) {
             image(stake, 145, 252, 108, 197);
+            if(insane)
+                image(annie_skewer.imgs[skewer_frames.length - 1], 170, 237, annie_skewer.w, annie_skewer.h);
+        }
         if(you.x < 225) {
             you.x++;
             you.left = false;
             you.sitting = true;
             if(!witch_burning.completed) interact = () => {burning = true};
+            else if(!death.completed) interact = () => {finale = true};
         }
     }
-    if(vision_timer > 30) {
+    else if(vision_timer > 30) {
         if(insane) {
-            if(!him_rising.completed)
-                him_rising.show(you.x-125, you.y - 185);
-            else
-                image(him_rising.imgs[rising_frames.length-1], you.x-125, you.y - 185, him_rising.w, him_rising.h);
-        }
+                var slamx = 38; var slamy = 50;
+                if(vision_timer > 90) {
+                    if(!slam.completed)
+                        slam.show(slamx, slamy);
+                    else
+                        image(slam.imgs[slam.imgs.length-1], slamx, slamy, slam.w, slam.h);
+                    if(vision_timer > 220) {
+                        if(!crawl.completed)
+                            crawl.show(slamx, slamy);
+                    }
+                }
+                else if(vision_timer > 70) {
+                    if(!his_eyes.completed)
+                        his_eyes.show(150, 100);
+                    else
+                        image(his_eyes.imgs[eye_frames.length-1], 150, 100, his_eyes.w, his_eyes.h);
+                }
+            }
         // Vision where annie leaves
         else if(shaman_touching.completed && !spontaneous_combustion.completed) {
             if(annie_x < -CANVAS_WIDTH) {
@@ -586,6 +655,8 @@ function vision() {
         you.x++;
         you.left = false;
     }
+    if(insane && (you.x > 150) && !stake_screen) {you.x--; you.right = false;}
+
     if (you.x > (CANVAS_WIDTH * 2) - 25) {
         if(!stake_screen) you.x--;
         you.right = false;
@@ -613,6 +684,15 @@ function vision() {
                 image(annie_skewer.imgs[skewer_frames.length - 1], 170, 237, annie_skewer.w, annie_skewer.h);
             witch_burning.show(you.x-95, you.y-273); 
         }
+    }
+    if(finale) {
+        var xloc = -12;
+        var yloc = 82;
+        if(!cut.completed) cut.show(xloc,yloc);
+        else if (!cut_opening.completed) cut_opening.show(xloc, yloc);
+        else if (!death.completed) death.show(xloc, yloc);
+        else image(death.imgs[death.imgs.length-1], xloc, yloc, death.w, death.h);
+
     }
 
     pop();
