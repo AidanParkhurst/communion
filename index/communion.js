@@ -1,7 +1,16 @@
 // -------- Asset Loading -------- //
 function preload() {
-    font_regular = loadFont("assets/Neucha-Regular.ttf")
-    
+    font_regular = loadFont("assets/Neucha-Regular.ttf");
+
+    footstep_grass = loadSound("assets/sound/Grass_Footsteps.mp3");
+    footstep_echo = loadSound("assets/sound/Echo_Footsteps4.mp3");
+
+    seer_crackle = loadSound("assets/sound/Seer_Crackle.mp3");
+    sacrifice_crackle = loadSound("assets/sound/Sacrifice_Crackle.mp3");
+    mid_crackle = loadSound("assets/sound/Mid_Crackle.mp3");
+    short_crackle = loadSound("assets/sound/Short_Crackle.mp3");
+
+    slam_thud = loadSound("assets/sound/Slam_Thuds.mp3");
     // Screens
     tomb_img = loadImage("assets/screens/tomb.png");
     tent_img = loadImage("assets/screens/tent.png");
@@ -142,15 +151,17 @@ class Animated {
     frame = 0;
     completed = false; // Has the animation played through all the way once?
     mirrored = false; // Should this animation play mirrored?
-    constructor(imgs, w, h, frame_step, on_complete = ()=>{}) {
+    constructor(imgs, w, h, frame_step, on_complete = ()=>{}, sound=null) {
         this.imgs = imgs; // The imgs to animate through
         this.frame_step = frame_step; // How many frames each img should be displayed
         this.w = w;
         this.h = h;
         this.on_complete = on_complete
+        this.sound = sound;
     }
 
     show(x, y) {
+        if(this.frame == 0 && this.sound !== null) this.sound.play();
 
         let current_img = this.imgs[0];
 
@@ -293,6 +304,9 @@ class Player {
         } else {
             noStroke();
         }
+        
+        let footstep = in_vision ? footstep_echo : footstep_grass;
+        let footstep_params = in_vision? [0, 1.2, 0.3, 0, 3] : [0, 1.8, 0.8, 0, 1.8];
 
         let current_frame = this.stand_frame;
         if(this.sitting) {
@@ -300,13 +314,14 @@ class Player {
             this.sit_timer++;
         }
         if(this.right != this.left) {
+            if(!footstep.isPlaying()) footstep.play(... footstep_params);
             if(this.sitting) {this.sitting = false; this.frame = 0}
             if(this.frame < this.frame_step) current_frame = this.lstep_frame;
             else if(this.frame < this.frame_step*2) current_frame = this.rstep_frame;
             else if(this.frame < this.frame_step*3) current_frame = this.stand_frame;
             else this.frame= -1;
             this.frame++;
-        }
+        } else if (footstep.isPlaying()) footstep.stop();
 
         translate(this.x,this.y);
         if(this.left) scale(-1,1);
@@ -339,6 +354,7 @@ var burning = false; // Is the player currently burning a witch?
 var sacrificing = false; // Is the player currently sacrificing someone?
 var insane = false; // Can the player see god?
 var finale = false; // Is the game ending?
+var dying = false;
 
 // Init game objects
 function start() {
@@ -372,7 +388,7 @@ function start() {
         /*|on_complete -> */ {
             fire_watching = false;
             you.sitting = false;
-            in_vision = true });
+            in_vision = true }, seer_crackle);
     
     flower_growing = new Animated(flower_frames, 20, 24, 15, () => {});
     shaman_burning = new Animated(burning_frames, 20, 40, 3, () => {});
@@ -382,7 +398,7 @@ function start() {
             in_vision = false; vision_timer = 0;
             screen = 0; you.x = 20; 
             current_dialog = second_talk;
-            fire_seering.completed = false; you.sit_timer = 0});
+            fire_seering.completed = false; you.sit_timer = 0}, mid_crackle);
 
     annie_walking = new Animated([annie_lstep, annie_rstep, annie_stand], 15, 36, 5, () => {});
     spontaneous_combustion = new Animated(combust_frames, 20, 95, 3, () =>
@@ -391,7 +407,7 @@ function start() {
             in_vision = false; vision_timer = 0;
             screen = 0; you.x = 20; 
             current_dialog = third_talk;
-            fire_seering.completed = false; you.sit_timer = 0});
+            fire_seering.completed = false; you.sit_timer = 0}, short_crackle);
 
     annie_falling = new Animated(fall_frames, 42, 32, 3, () => {});
     annie_skewer = new Animated(skewer_frames, 40, 52, 3, () => {});
@@ -406,21 +422,21 @@ function start() {
     sacrifice = new Animated(sacrifice_frames, CANVAS_WIDTH, CANVAS_WIDTH+64, 4, () => {
         interact = () => {}; sacrificing = false;
         insane = true; in_vision = true; 
-    });
+    }, sacrifice_crackle);
 
     /*right_hand = new Animated(right_hand_frames, 266, 305, 4, () => {});
     left_hand = new Animated(left_hand_frames, 266, 305, 4, () => {});*/
     his_eyes = new Animated(eye_frames, 150, 23, 4, () => {
         you.x = 137;
     });
-    slam = new Animated(slam_frames, 422, 473, 4, () => {you.x = 137;});
+    slam = new Animated(slam_frames, 422, 473, 4, () => {you.x = 137;}, slam_thud);
     crawl = new Animated(crawl_frames, 422, 473, 8, () => {
         interact = () => {}; sacrificing = false;
         you.x = 137;});
 
     cut = new Animated(cut_frames, 423, 367, 4, () => {});
     cut_opening = new Animated(cutopen_frames, 423, 367, 4, () => {});
-    death = new Animated(death_frames, 423, 367, 4, () => {});
+    death = new Animated(death_frames, 423, 367, 5, () => {});
 }
 
 // Render / game logic loop
@@ -690,6 +706,10 @@ function vision() {
         var yloc = 82;
         if(!cut.completed) cut.show(xloc,yloc);
         else if (!cut_opening.completed) cut_opening.show(xloc, yloc);
+        else if (!dying) {
+            image(cut_opening.imgs[cut_opening.imgs.length-1], xloc, yloc, cut_opening.w, cut_opening.h);
+            interact = () => {dying = true};
+        } 
         else if (!death.completed) death.show(xloc, yloc);
         else image(death.imgs[death.imgs.length-1], xloc, yloc, death.w, death.h);
 
@@ -699,6 +719,7 @@ function vision() {
 }
 
 function keyPressed() {
+    if(getAudioContext().state !== "running") userStartAudio();
     switch(keyCode) {
         case LEFT_ARROW:
         case 65: // A key
