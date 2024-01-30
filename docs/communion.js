@@ -1,7 +1,7 @@
 // -------- Asset Loading -------- //
 function preload() {
     font_regular = loadFont("assets/Neucha-Regular.ttf");
-
+    font_title = loadFont("assets/Lora-Regular.ttf");
     footstep_grass = loadSound("assets/sound/Grass_Footsteps.mp3");
     footstep_echo = loadSound("assets/sound/Echo_Footsteps4.mp3");
 
@@ -314,7 +314,7 @@ class Player {
             this.sit_timer++;
         }
         if(this.right != this.left) {
-            if(!footstep.isPlaying()) footstep.play(... footstep_params);
+            if(!footstep.isPlaying()) footstep.play();
             if(this.sitting) {this.sitting = false; this.frame = 0}
             if(this.frame < this.frame_step) current_frame = this.lstep_frame;
             else if(this.frame < this.frame_step*2) current_frame = this.rstep_frame;
@@ -380,7 +380,7 @@ function start() {
             ["You're a monster", 0],
         ["I saw her sins", 1],
         ["He saw my potential", 1],
-        ["He sees yours too", 1]]);
+        ["He will see you too", 1]]);
     current_dialog = first_talk;
 
     space_indicator = new Animated([space_unpressed, space_pressed], 20, 10, 15);
@@ -711,8 +711,13 @@ function vision() {
             interact = () => {dying = true};
         } 
         else if (!death.completed) death.show(xloc, yloc);
-        else image(death.imgs[death.imgs.length-1], xloc, yloc, death.w, death.h);
-
+        else { // It ends
+            textFont(font_title);
+            //Change font color
+            fill(0,0,0);
+            text("Communion", 150, 150); 
+            image(death.imgs[death.imgs.length-1], xloc, yloc, death.w, death.h);
+        }
     }
 
     pop();
